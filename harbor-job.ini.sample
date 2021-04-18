@@ -1,0 +1,10 @@
+[main]
+harbor_url = http://192.168.52.44
+harbor_version = 1.6
+harbor_user = admin
+harbor_pwd = Harbor12345
+
+[app1]
+repo_regexp = '^app1/repo1/busybox$'
+repo_save_num = 5
+
