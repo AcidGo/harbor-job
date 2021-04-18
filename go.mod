@@ -2,4 +2,7 @@ module github.com/AcidGo/harbor-job
 
 go 1.15
 
-require github.com/TimeBye/go-harbor v0.0.0-20210415080221-d3a90c0c44ce // indirect
+require (
+	github.com/smartystreets/goconvey v1.6.4 // indirect
+	gopkg.in/ini.v1 v1.51.0
+)
