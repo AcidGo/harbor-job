@@ -118,7 +118,7 @@ func init() {
         }
         err := sec.MapTo(rule)
         if err != nil {
-            logging.Printf("create rule from sec %s failed: %s\n", sec.Name(), err.Error())
+            logging.Errorf("create rule from sec %s failed: %s", sec.Name(), err.Error())
             continue
         }
 
@@ -153,10 +153,11 @@ func main() {
         for _, p := range projects {
             if p.Name == rule.Project {
                 projectId = p.ProjectId
+                break
             }
         }
         if projectId == 0 {
-            logging.Printf("not catch proejct %s, ignore it", rule.Project)
+            logging.Warnf("not catch proejct %s, ignore it", rule.Project)
             continue
         }
 
@@ -164,12 +165,14 @@ func main() {
         if err != nil {
             logging.Fatal(err)
         }
+        logging.Infof("found %d repositories in the project %s", len(repos), rule.Project)
 
         for _, repo := range repos {
             if !regexpMean(repo.Name, rule.RepoRegexp) {
+                logging.Debugf("repo %s not mean the regexp rule, ignore it", repo.Name)
                 continue
             }
-            logging.Printf("%s mean the repo %s\n", rule.RepoRegexp, repo.Name)
+            logging.Debugf("%s mean the repo %s", rule.RepoRegexp, repo.Name)
 
             if meanRepo {
                 continue
@@ -179,6 +182,7 @@ func main() {
             if err != nil {
                 logging.Fatal(err)
             }
+            logging.Debugf("found %d tags in the repo %s", len(tags), repo.Name)
 
             sort.Sort(tags)
             if len(tags) < rule.RepoSaveNum {
@@ -186,7 +190,7 @@ func main() {
             }
 
             for _, tag := range tags {
-                logging.Printf("tag's name: %s, tag's createtime: %s\n", tag.Name, tag.CreatedTime.Format("2006-01-02 15:04:05"))
+                logging.Debugf("tag's name: %s, tag's createtime: %s", tag.Name, tag.CreatedTime.Format("2006-01-02 15:04:05"))
             }
 
             tagsSave := make(map[string]string)
@@ -203,8 +207,8 @@ func main() {
                 tagsSave[tag.Digest] = tag.Name
                 delIdx = idx + 1
             }
-            logging.Printf("delIdx is %d, length of tags is %d", delIdx, len(tags))
-            logging.Printf("length of tagsSave: %d", len(tagsSave))
+            logging.Infof("delIdx is %d, length of tags is %d", delIdx, len(tags))
+            logging.Infof("length of tagsSave: %d", len(tagsSave))
 
             if delIdx >= len(tags) {
                 break
@@ -214,11 +218,11 @@ func main() {
                 if _, ok := tagsSave[tag.Digest]; ok {
                     continue
                 }
-                logging.Printf("starting del tag: %s/%s", repo.Name, tag.Name)
+                logging.Infof("starting del tag: %s/%s", repo.Name, tag.Name)
                 if !dryRun {
                     err := client.DeleteTag(repo.Name, tag.Name)
                     if err != nil {
-                        logging.Printf("del tag %s/%s is failed", repo.Name, tag.Name)
+                        logging.Infof("del tag %s/%s is failed", repo.Name, tag.Name)
                     }
                     time.Sleep(200*time.Millisecond)
                 }
@@ -226,10 +230,10 @@ func main() {
         }
 
         projectDone[rule.Project] = projectId
-        logging.Printf("project %s done", rule.Project)
+        logging.Infof("project %s done", rule.Project)
     }
 
-    logging.Println("all done")
+    logging.Info("all done")
 }
 
 func regexpMean(src, re string) (bool) {

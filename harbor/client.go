@@ -85,22 +85,20 @@ func (c *Client) do(method, url string, param map[string]string, data map[string
         }
     }
     req.URL.RawQuery = q.Encode()
-    logging.Printf("url of request: %s", req.URL.String())
+    logging.Debugf("url of request: %s", req.URL.String())
 
     req.Header.Set("Content-Type", "application/json")
     for i := range c.cookies {
         req.AddCookie(c.cookies[i])
     }
 
-    // logging.Printf("%#v", req)
-    // logging.Printf("%#v", req.Cookies())
     resp, err := c.client.Do(req)
     if err != nil {
         return nil, err
     }
 
     if resp.StatusCode/100 > 2 {
-        logging.Printf("statusCode of response is %d", resp.StatusCode)
+        logging.Warnf("statusCode of response is %d", resp.StatusCode)
 
         b, err := ioutil.ReadAll(resp.Body)
         defer resp.Body.Close()
