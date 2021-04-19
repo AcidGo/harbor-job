@@ -2,7 +2,9 @@ package main
 
 import (
     "flag"
+    "fmt"
     "log"
+    "os"
     "regexp"
     "sort"
 
@@ -20,16 +22,32 @@ const (
 )
 
 var (
+    // param
     cfgPath     string
+    dryRun      bool
+    
+    // config
     harborUrl   string
     harborVer   string
     harborUser  string
     harborPwd   string
+
+    // runtime
     rules       []*rule.Rule
+
+    // app info
+    AppName             string
+    AppAuthor           string
+    AppVersion          string
+    AppGitCommitHash    string
+    AppBuildTime        string
+    AppGoVersion        string
 )
 
 func init() {
     flag.StringVar(&cfgPath, "f", "harbor-job.ini", "app main config file path")
+    flag.BoolVar(&dryRun, "dry-run", false, "execute command with dry run mode")
+    flag.Usage = flagUsage
     flag.Parse()
 
     cfg, err := ini.Load(cfgPath)
@@ -59,7 +77,7 @@ func init() {
         }
         err := sec.MapTo(rule)
         if err != nil {
-            log.Printf("create rule from sec %s failed: %s\n", sec.Name, err.Error())
+            log.Printf("create rule from sec %s failed: %s\n", sec.Name(), err.Error())
             continue
         }
 
@@ -152,9 +170,11 @@ func main() {
                     continue
                 }
                 log.Printf("starting del tag: %s/%s", repo.Name, tag.Name)
-                err := client.DeleteTag(repo.Name, tag.Name)
-                if err != nil {
-                    log.Printf("del tag %s/%s is failed", repo.Name, tag.Name)
+                if !dryRun {
+                    err := client.DeleteTag(repo.Name, tag.Name)
+                    if err != nil {
+                        log.Printf("del tag %s/%s is failed", repo.Name, tag.Name)
+                    }
                 }
             }
         }
@@ -176,4 +196,18 @@ func regexpMean(src, re string) (bool) {
     }
 
     return cp.MatchString(src)
+}
+
+func flagUsage() {
+    usageMsg := fmt.Sprintf(`App: %s
+Version: %s
+Author: %s
+GitCommit: %s
+BuildTime: %s
+GoVersion: %s
+Options:
+`, AppName, AppVersion, AppAuthor, AppGitCommitHash, AppBuildTime, AppGoVersion)
+
+    fmt.Fprintf(os.Stderr, usageMsg)
+    flag.PrintDefaults()
 }
