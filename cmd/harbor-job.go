@@ -3,34 +3,48 @@ package main
 import (
     "flag"
     "fmt"
-    "log"
     "os"
+    "path/filepath"
     "regexp"
     "sort"
+    "time"
 
     "github.com/AcidGo/harbor-job/harbor"
+    "github.com/AcidGo/harbor-job/logger"
     "github.com/AcidGo/harbor-job/rule"
     "gopkg.in/ini.v1"
 )
 
 const (
-    CfgMainSec      = "main"
-    cfgMainKeyUrl   = "harbor_url"
-    cfgMainKeyVer   = "harbor_version"
-    cfgMainKeyUser  = "harbor_user"
-    cfgMainKeyPwd   = "harbor_pwd"
+    CfgMainSec          = "main"
+    cfgMainKeyUrl       = "harbor_url"
+    cfgMainKeyVer       = "harbor_version"
+    cfgMainKeyUser      = "harbor_user"
+    cfgMainKeyPwd       = "harbor_pwd"
+    cfgMainKeyLogDir    = "log_dir"
+    cfgMainKeyLogName   = "log_name"
+    cfgMainKeyLogLevel  = "log_level"
+    cfgMainKeyLogReport = "log_report"
 )
 
 var (
     // param
     cfgPath     string
     dryRun      bool
+    meanRepo    bool
     
     // config
     harborUrl   string
     harborVer   string
     harborUser  string
     harborPwd   string
+    logDir      string
+    logName     string
+    logLevel    string
+    logReport   bool
+
+    // logger
+    logging     *logger.ContextLogger
 
     // runtime
     rules       []*rule.Rule
@@ -45,19 +59,46 @@ var (
 )
 
 func init() {
+    logging = logger.FitContext("harbor-job")
+
     flag.StringVar(&cfgPath, "f", "harbor-job.ini", "app main config file path")
     flag.BoolVar(&dryRun, "dry-run", false, "execute command with dry run mode")
+    flag.BoolVar(&meanRepo, "mean-repo", false, "show meant repo name")
     flag.Usage = flagUsage
     flag.Parse()
 
     cfg, err := ini.Load(cfgPath)
     if err != nil {
-        log.Fatal(err)
+        logging.Fatal(err)
     }
 
     mainSec, err := cfg.GetSection(CfgMainSec)
     if err != nil {
-        log.Fatal(err)
+        logging.Fatal(err)
+    }
+
+    // init logger
+    logDir          = mainSec.Key(cfgMainKeyLogDir).String()
+    logName         = mainSec.Key(cfgMainKeyLogName).String()
+    logLevel        = mainSec.Key(cfgMainKeyLogLevel).String()
+    logReport, err   = mainSec.Key(cfgMainKeyLogReport).Bool()
+    if err != nil {
+        logging.Fatal(err)
+    }
+
+    if !IsDir(logDir) {
+        logging.Fatalf("the log dir %s is not a dir or no exists", logDir)
+    }
+
+    logPath := filepath.Join(logDir, logName)
+    err = logger.LogFileSetting(logPath)
+    if err != nil {
+        logging.Fatal(err)
+    }
+    logger.ReportCallerSetting(logReport)
+    err = logger.LogLevelSetting(logLevel)
+    if err != nil {
+        logging.Fatal(err)
     }
 
     harborUrl = mainSec.Key(cfgMainKeyUrl).String()
@@ -77,7 +118,7 @@ func init() {
         }
         err := sec.MapTo(rule)
         if err != nil {
-            log.Printf("create rule from sec %s failed: %s\n", sec.Name(), err.Error())
+            logging.Printf("create rule from sec %s failed: %s\n", sec.Name(), err.Error())
             continue
         }
 
@@ -88,17 +129,17 @@ func init() {
 func main() {
     client, err := harbor.NewClient(harborUrl, harborVer)
     if err != nil {
-        log.Fatal(err)
+        logging.Fatal(err)
     }
 
     err = client.Login(harborUser, harborPwd)
     if err != nil {
-        log.Fatal(err)
+        logging.Fatal(err)
     }
 
     projects, err := client.Projects()
     if err != nil {
-        log.Fatal(err)
+        logging.Fatal(err)
     }
 
     projectDone := make(map[string]int)
@@ -115,24 +156,28 @@ func main() {
             }
         }
         if projectId == 0 {
-            log.Printf("not catch proejct %s, ignore it", rule.Project)
+            logging.Printf("not catch proejct %s, ignore it", rule.Project)
             continue
         }
 
         repos, err := client.Repositories(projectId)
         if err != nil {
-            log.Fatal(err)
+            logging.Fatal(err)
         }
 
         for _, repo := range repos {
             if !regexpMean(repo.Name, rule.RepoRegexp) {
                 continue
             }
-            log.Printf("%s mean the repo %s\n", rule.RepoRegexp, repo.Name)
+            logging.Printf("%s mean the repo %s\n", rule.RepoRegexp, repo.Name)
+
+            if meanRepo {
+                continue
+            }
 
             tags, err := client.Tags(repo.Name)
             if err != nil {
-                log.Fatal(err)
+                logging.Fatal(err)
             }
 
             sort.Sort(tags)
@@ -141,7 +186,7 @@ func main() {
             }
 
             for _, tag := range tags {
-                log.Printf("tag's name: %s, tag's createtime: %s\n", tag.Name, tag.CreatedTime.Format("2006-01-02 15:04:05"))
+                logging.Printf("tag's name: %s, tag's createtime: %s\n", tag.Name, tag.CreatedTime.Format("2006-01-02 15:04:05"))
             }
 
             tagsSave := make(map[string]string)
@@ -158,8 +203,8 @@ func main() {
                 tagsSave[tag.Digest] = tag.Name
                 delIdx = idx + 1
             }
-            log.Printf("delIdx is %d, length of tags is %d", delIdx, len(tags))
-            log.Printf("length of tagsSave: %d", len(tagsSave))
+            logging.Printf("delIdx is %d, length of tags is %d", delIdx, len(tags))
+            logging.Printf("length of tagsSave: %d", len(tagsSave))
 
             if delIdx >= len(tags) {
                 break
@@ -169,21 +214,22 @@ func main() {
                 if _, ok := tagsSave[tag.Digest]; ok {
                     continue
                 }
-                log.Printf("starting del tag: %s/%s", repo.Name, tag.Name)
+                logging.Printf("starting del tag: %s/%s", repo.Name, tag.Name)
                 if !dryRun {
                     err := client.DeleteTag(repo.Name, tag.Name)
                     if err != nil {
-                        log.Printf("del tag %s/%s is failed", repo.Name, tag.Name)
+                        logging.Printf("del tag %s/%s is failed", repo.Name, tag.Name)
                     }
+                    time.Sleep(200*time.Millisecond)
                 }
             }
         }
 
         projectDone[rule.Project] = projectId
-        log.Printf("project %s done", rule.Project)
+        logging.Printf("project %s done", rule.Project)
     }
 
-    log.Println("all done")
+    logging.Println("all done")
 }
 
 func regexpMean(src, re string) (bool) {
@@ -210,4 +256,12 @@ Options:
 
     fmt.Fprintf(os.Stderr, usageMsg)
     flag.PrintDefaults()
+}
+
+func IsDir(path string) (bool) {
+    s, err := os.Stat(path)
+    if err != nil {
+        return false
+    }
+    return s.IsDir()
 }

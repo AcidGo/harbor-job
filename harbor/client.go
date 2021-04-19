@@ -4,10 +4,11 @@ import (
     "fmt"
     "io"
     "io/ioutil"
-    "log"
     "net/http"
     neturl "net/url"
     "strings"
+
+    "github.com/AcidGo/harbor-job/logger"
 )
 
 const (
@@ -17,6 +18,14 @@ const (
 
     ScopePrject     = "p"
 )
+
+var (
+    logging         *logger.ContextLogger
+)
+
+func init() {
+    logging = logger.FitContext("harbor-client")
+}
 
 type Client struct {
     url         string
@@ -76,22 +85,22 @@ func (c *Client) do(method, url string, param map[string]string, data map[string
         }
     }
     req.URL.RawQuery = q.Encode()
-    log.Printf("url of request: %s", req.URL.String())
+    logging.Printf("url of request: %s", req.URL.String())
 
     req.Header.Set("Content-Type", "application/json")
     for i := range c.cookies {
         req.AddCookie(c.cookies[i])
     }
 
-    // log.Printf("%#v", req)
-    // log.Printf("%#v", req.Cookies())
+    // logging.Printf("%#v", req)
+    // logging.Printf("%#v", req.Cookies())
     resp, err := c.client.Do(req)
     if err != nil {
         return nil, err
     }
 
     if resp.StatusCode/100 > 2 {
-        log.Printf("statusCode of response is %d", resp.StatusCode)
+        logging.Printf("statusCode of response is %d", resp.StatusCode)
 
         b, err := ioutil.ReadAll(resp.Body)
         defer resp.Body.Close()
