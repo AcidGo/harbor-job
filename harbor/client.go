@@ -92,6 +92,7 @@ func (c *Client) do(method, url string, param map[string]string, data map[string
         req.AddCookie(c.cookies[i])
     }
 
+    logging.Tracef("%#v", req)
     resp, err := c.client.Do(req)
     if err != nil {
         return nil, err

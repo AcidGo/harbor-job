@@ -166,8 +166,11 @@ func main() {
             logging.Fatal(err)
         }
         logging.Infof("found %d repositories in the project %s", len(repos), rule.Project)
+        logging.Tracef("%#v", repos)
 
         for _, repo := range repos {
+            logging.Debugf("start deal with repo %s", repo.Name)
+
             if !regexpMean(repo.Name, rule.RepoRegexp) {
                 logging.Debugf("repo %s not mean the regexp rule, ignore it", repo.Name)
                 continue
@@ -211,7 +214,7 @@ func main() {
             logging.Infof("length of tagsSave: %d", len(tagsSave))
 
             if delIdx >= len(tags) {
-                break
+                continue
             }
 
             for _, tag := range tags[delIdx:] {
